@@ -17,8 +17,13 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.className = 'sho
 function fail(e) { toast(/fetch|network/i.test(e.message) ? 'Connexion perdue, réessayez' : 'Erreur : ' + e.message); }
 const col = n => n === 'Famille' ? '#c99a2e' : (S.profiles.find(p => p.name === n)?.color || '#888');
 const owners = list => [...new Set(list.flatMap(x => x.owners || []))].join(', ') || 'la famille';
+const fmtD = d => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+const loansHtml = () => {
+  const l = S.items.filter(i => i.loaned_to);
+  return l.length ? `<h2>Prêtés en ce moment</h2><div class="panel">${l.map(i => `<button class="row-btn" data-act="open" data-id="${i.id}"><b>${esc(i.title)}</b><br><span class="mut">chez ${esc(i.loaned_to)}${i.loaned_at ? ' depuis le ' + fmtD(i.loaned_at) : ''}</span></button>`).join('')}</div>` : '';
+};
 const cover = i => i.cover ? `<img src="${esc(i.cover)}" loading="lazy" alt="">` : `<div class="nc"><b>${esc((i.title || '?')[0])}</b><small>${esc(i.type)}</small></div>`;
-const card = i => `<div class="card" data-act="open" data-id="${i.id}"><div class="cv">${cover(i)}${i.duplicate ? '<span class="x2">×2</span>' : ''}</div><div class="t">${esc(i.title)}</div><div class="a">${esc(i.author)}</div><div class="dots">${(i.owners || []).map(o => `<i style="background:${col(o)}" title="${esc(o)}"></i>`).join('')}</div></div>`;
+const card = i => `<div class="card" data-act="open" data-id="${i.id}"><div class="cv">${cover(i)}${i.duplicate ? '<span class="x2">×2</span>' : ''}${i.loaned_to ? '<span class="ln">Prêté</span>' : ''}</div><div class="t">${esc(i.title)}</div><div class="a">${esc(i.author)}</div><div class="dots">${(i.owners || []).map(o => `<i style="background:${col(o)}" title="${esc(o)}"></i>`).join('')}</div></div>`;
 
 /* ---------- connexion ---------- */
 function login(msg = '') {
@@ -41,18 +46,18 @@ async function init() {
 /* ---------- vues ---------- */
 const home = () => {
   const n = S.items.length, by = t => S.items.filter(i => i.type === t).length;
-  return `<h1>Bonjour ${esc(S.me.name)}</h1><p class="mut">${n} produit${n > 1 ? 's' : ''} à la maison${n ? ' : ' + TYPES.filter(by).map(t => by(t) + ' ' + LBL[t][by(t) > 1 ? 1 : 0]).join(', ') : ''}</p><button class="btn" data-act="go" data-tab="scan">Ajouter un produit</button><h2>Derniers ajouts</h2>${n ? `<div class="grid">${S.items.slice(0, 12).map(card).join('')}</div>` : '<p class="empty">Aucun produit pour l’instant.<br>Scannez votre premier livre.</p>'}`;
+  return `<h1>Bonjour ${esc(S.me.name)}</h1><p class="mut">${n} produit${n > 1 ? 's' : ''} à la maison${n ? ' : ' + TYPES.filter(by).map(t => by(t) + ' ' + LBL[t][by(t) > 1 ? 1 : 0]).join(', ') : ''}</p><button class="btn" data-act="go" data-tab="scan">Ajouter un produit</button>${loansHtml()}<h2>Derniers ajouts</h2>${n ? `<div class="grid">${S.items.slice(0, 12).map(card).join('')}</div>` : '<p class="empty">Aucun produit pour l’instant.<br>Scannez votre premier livre.</p>'}`;
 };
 const filt = () => {
   const q = S.q.toLowerCase(), k = S.sort;
-  const a = S.items.filter(i => (!S.ft || i.type === S.ft) && (!S.fo || (S.fo === 'dup' ? i.duplicate : (i.owners || []).includes(S.fo))) && (!q || (i.title + ' ' + (i.author || '') + ' ' + (i.genre || '')).toLowerCase().includes(q)));
+  const a = S.items.filter(i => (!S.ft || i.type === S.ft) && (!S.fo || (S.fo === 'dup' ? i.duplicate : S.fo === 'loan' ? !!i.loaned_to : (i.owners || []).includes(S.fo))) && (!q || (i.title + ' ' + (i.author || '') + ' ' + (i.genre || '')).toLowerCase().includes(q)));
   return a.sort((x, y) => k === 'created_at' ? y.created_at.localeCompare(x.created_at) : k === 'year' ? (y.year || 0) - (x.year || 0) : String(x[k] || '').localeCompare(String(y[k] || ''), 'fr'));
 };
 const gridHtml = () => { const a = filt(); return a.length ? `<div class="grid">${a.map(card).join('')}</div>` : '<p class="empty">Aucun résultat.<br>Essayez un autre filtre.</p>'; };
 const chip = (act, v, label, on) => `<button class="chip ${on ? 'on' : ''}" data-act="${act}" data-v="${esc(v)}">${esc(label)}</button>`;
 const lib = () => `<h1>Bibliothèque</h1><input id="q" class="search" type="search" placeholder="Titre, auteur, genre…" value="${esc(S.q)}">
 <div class="chips scroll">${chip('ft', '', 'Tous', !S.ft)}${TYPES.map(t => chip('ft', t, t, S.ft === t)).join('')}</div>
-<div class="chips scroll">${chip('fo', '', 'Tout le monde', !S.fo)}${['Famille', ...S.profiles.map(p => p.name)].map(n => chip('fo', n, n, S.fo === n)).join('')}${chip('fo', 'dup', 'Doublons', S.fo === 'dup')}</div>
+<div class="chips scroll">${chip('fo', '', 'Tout le monde', !S.fo)}${['Famille', ...S.profiles.map(p => p.name)].map(n => chip('fo', n, n, S.fo === n)).join('')}${chip('fo', 'dup', 'Doublons', S.fo === 'dup')}${chip('fo', 'loan', 'Prêtés', S.fo === 'loan')}</div>
 <select id="sort">${[['created_at', 'Date d’ajout'], ['title', 'Titre'], ['author', 'Auteur'], ['genre', 'Genre'], ['year', 'Année']].map(([v, l]) => `<option value="${v}" ${S.sort === v ? 'selected' : ''}>Trier par : ${l}</option>`).join('')}</select>
 <div id="libgrid">${gridHtml()}</div>`;
 const scan = () => `<h1>Scanner</h1><div class="seg"><button data-act="mode" data-v="add" class="${S.mode === 'add' ? 'on' : ''}">Ajouter</button><button data-act="mode" data-v="check" class="${S.mode === 'check' ? 'on' : ''}">Vérifier</button></div><div id="reader"></div><p class="mut c">${S.mode === 'add' ? 'Placez le code-barres dans le cadre.' : 'Vérifiez si un produit est déjà à la maison, sans l’ajouter.'}</p><div class="row"><input id="isbn" inputmode="numeric" placeholder="ISBN ou code-barres"><button class="btn sm" data-act="isbn">Valider</button></div>${S.mode === 'add' ? `<label class="chk"><input type="checkbox" id="batch" ${S.batch ? 'checked' : ''}> Scan en rafale</label><button class="link" data-act="manual">Saisir les infos à la main</button>` : ''}`;
@@ -106,7 +111,7 @@ async function handle(code) {
   S.busy = true; try { S.scanner?.pause(true); } catch (e) { }
   const ex = S.items.filter(i => i.barcode === code), m = ex[0] || await lookup(code);
   if (S.mode === 'check') {
-    $('#sheet').innerHTML = `<div class="bd" data-act="close"></div><div class="sh c"><div class="big">${ex.length ? '✅' : '🆕'}</div><h2>${esc(m.title || code)}</h2><p>${ex.length ? 'Déjà à la maison : ' + esc(owners(ex)) : 'Pas encore dans la bibliothèque'}</p><button class="btn" data-act="close">Suivant</button></div>`;
+    $('#sheet').innerHTML = `<div class="bd" data-act="close"></div><div class="sh c"><div class="big">${ex.length ? '✅' : '🆕'}</div><h2>${esc(m.title || code)}</h2><p>${ex.length ? 'Déjà à la maison : ' + esc(owners(ex)) + (ex[0].loaned_to ? '<br>Actuellement prêté à ' + esc(ex[0].loaned_to) : '') : 'Pas encore dans la bibliothèque'}</p><button class="btn" data-act="close">Suivant</button></div>`;
     $('#sheet').className = 'open';
   } else { openForm({ ...m, id: undefined, barcode: code, owners: undefined }, ex); if (!ex.length && !m.title) toast('Infos introuvables : complétez la fiche'); }
 }
@@ -125,6 +130,7 @@ ${it.cover ? `<div class="fcov"><img src="${esc(it.cover)}" alt=""></div>` : ''}
 <label>Type<select id="f_type">${TYPES.map(t => `<option ${t === it.type ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
 <label>ISBN / code-barres<input id="f_code" inputmode="numeric" placeholder="978…" value="${esc(it.barcode)}"></label><div class="mut" style="font-size:12px;margin-top:4px">Permet de retrouver ce produit en le scannant.</div>
 <div class="lbl">Possédé par</div><div class="chips" id="f_own">${names.map(n => `<label class="chip ${own.includes(n) ? 'on' : ''}"><input type="checkbox" value="${esc(n)}" ${own.includes(n) ? 'checked' : ''} hidden>${esc(n)}</label>`).join('')}</div>
+${it.id ? `<div class="lbl">Prêt</div><label class="chk"><input type="checkbox" id="f_loan" ${it.loaned_to ? 'checked' : ''}> Actuellement prêté</label><div id="f_loanbox" style="${it.loaned_to ? '' : 'display:none'}"><input id="f_who" list="who" placeholder="Prêté à qui ?" value="${esc(it.loaned_to)}"><datalist id="who">${[...new Set(S.items.map(x => x.loaned_to).filter(Boolean))].map(n => `<option value="${esc(n)}">`).join('')}</datalist>${it.loaned_at ? `<div class="mut" style="font-size:12px;margin-top:4px">Depuis le ${fmtD(it.loaned_at)}</div>` : ''}</div>` : ''}
 ${it.id ? `<label class="chk"><input type="checkbox" id="f_dup" ${it.duplicate ? 'checked' : ''}> J’ai un exemplaire en double</label>` : ''}
 <button class="btn" data-act="save">${it.id ? 'Enregistrer' : 'Ajouter à la bibliothèque'}</button>
 ${it.id ? '<button class="link red" data-act="del">Supprimer ce produit</button>' : ''}<button class="link" data-act="close">Annuler</button></div>`;
@@ -137,6 +143,10 @@ async function save() {
   const row = { title: g('f_title'), author: g('f_author') || null, genre: g('f_genre') || null, year: parseInt(g('f_year')) || null, type: g('f_type'), barcode: normCode(g('f_code')) || null, owners: [...document.querySelectorAll('#f_own input:checked')].map(i => i.value) };
   if (it.id) {
     row.duplicate = $('#f_dup').checked;
+    const lo = $('#f_loan').checked, who = g('f_who');
+    if (lo && !who) return toast('Indiquez à qui le produit est prêté');
+    row.loaned_to = lo ? who : null;
+    row.loaned_at = lo ? (it.loaned_to && it.loaned_at ? it.loaned_at : new Date().toISOString()) : null;
     const { data, error } = await sb.from('products').update(row).eq('id', it.id).select().single();
     if (error) return fail(error);
     S.items = S.items.map(x => x.id === it.id ? data : x); toast('Modifié ✓');
@@ -184,7 +194,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'csv') {
     const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
-    const rows = [['Titre', 'Auteur', 'Genre', 'Année', 'Type', 'Code-barres', 'Propriétaires', 'Doublon', 'Date d’ajout'], ...S.items.map(i => [i.title, i.author, i.genre, i.year, i.type, i.barcode, (i.owners || []).join(' + '), i.duplicate ? 'oui' : '', i.created_at.slice(0, 10)])];
+    const rows = [['Titre', 'Auteur', 'Genre', 'Année', 'Type', 'Code-barres', 'Propriétaires', 'Doublon', 'Prêté à', 'Date d’ajout'], ...S.items.map(i => [i.title, i.author, i.genre, i.year, i.type, i.barcode, (i.owners || []).join(' + '), i.duplicate ? 'oui' : '', i.loaned_to || '', i.created_at.slice(0, 10)])];
     const url = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.map(q).join(';')).join('\n')], { type: 'text/csv' }));
     Object.assign(document.createElement('a'), { href: url, download: 'bibli-home.csv' }).click();
   }
@@ -194,7 +204,9 @@ document.addEventListener('input', e => { if (e.target.id === 'q') { S.q = e.tar
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'batch') S.batch = t.checked;
+  else if (t.id === 'f_loan') { $('#f_loanbox').style.display = t.checked ? '' : 'none'; if (t.checked) $('#f_who').focus(); }
   else if (t.id === 'sort') { S.sort = t.value; $('#libgrid').innerHTML = gridHtml(); }
   else if (t.closest('#f_own')) t.parentElement.classList.toggle('on', t.checked);
 });
+document.head.insertAdjacentHTML('beforeend', '<style>.ln{position:absolute;left:6px;bottom:6px;background:#2f6f8f;color:#fff;font:700 11px "DM Sans",sans-serif;padding:2px 8px;border-radius:99px}</style>');
 init();
